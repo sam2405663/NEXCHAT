@@ -1,4 +1,3 @@
-// backend/src/index.js
 import express from "express";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
@@ -31,19 +30,24 @@ app.use("/api/messages", messageRoutes);
 
 // Serve frontend in production
 if (process.env.NODE_ENV === "production") {
-  const frontendDistPath = path.join(__dirname, "../../frontend/dist");
+  // Adjusted path: assuming 'frontend' and 'backend' are siblings in your root
+  const frontendDistPath = path.join(__dirname, "../frontend/dist");
 
   // Serve static files
   app.use(express.static(frontendDistPath));
 
-  // Catch-all route for React SPA using a named wildcard
-  app.get("/:any*", (req, res) => {
+  /**
+   * MODERN WILDCARD SYNTAX (v8+)
+   * The { } syntax defines a group, and /*any tells it to capture 
+   * everything including slashes into a parameter named 'any'.
+   */
+  app.get("{/*any}", (req, res) => {
     res.sendFile(path.join(frontendDistPath, "index.html"));
   });
 }
 
 // Start server
 server.listen(PORT, async () => {
-  console.log("Server is running on PORT:", PORT);
+  console.log(`Server is running on PORT: ${PORT}`);
   await connectDB();
 });
