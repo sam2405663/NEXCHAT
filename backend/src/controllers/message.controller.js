@@ -35,6 +35,40 @@ export const getMessages = async (req, res) => {
   }
 };
 
+export const markMessagesAsSeen = async (req, res) => {
+  console.log("🔥 MARK AS SEEN TRIGGERED");
+  try {
+    const { id: senderId } = req.params;
+    const receiverId = req.user._id;
+
+    await Message.updateMany(
+      {
+        senderId,
+        receiverId,
+        seen: false,
+      },
+      {
+        $set: { seen: true },
+      }
+    );
+
+    // 🔥 notify sender instantly
+    const senderSocketId = getReceiverSocketId(senderId);
+    console.log("🔥 EMITTING TO SOCKET:", senderSocketId);
+    if (senderSocketId) {
+      io.to(senderSocketId).emit("messagesSeenByReceiver", {
+        receiverId,
+      });
+    }
+
+    res.status(200).json({ message: "Messages marked as seen" });
+  } catch (error) {
+    console.log("Error in markMessagesAsSeen:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+
+};
+
 export const sendMessage = async (req, res) => {
   try {
     const { text, image } = req.body;

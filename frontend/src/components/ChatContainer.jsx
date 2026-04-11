@@ -15,17 +15,23 @@ const ChatContainer = () => {
     selectedUser,
     subscribeToMessages,
     unsubscribeFromMessages,
+    markMessagesAsSeen,
+
   } = useChatStore();
   const { authUser } = useAuthStore();
   const messageEndRef = useRef(null);
+  const { isTyping, typingUser } = useChatStore();
+  const { socket } = useAuthStore();
 
   useEffect(() => {
-    getMessages(selectedUser._id);
+  if (!selectedUser?._id) return;
 
-    subscribeToMessages();
+  getMessages(selectedUser._id);
+  markMessagesAsSeen(selectedUser._id);
+  subscribeToMessages();
 
-    return () => unsubscribeFromMessages();
-  }, [selectedUser._id, getMessages, subscribeToMessages, unsubscribeFromMessages]);
+  return () => unsubscribeFromMessages();
+}, [selectedUser?._id]);
 
   useEffect(() => {
     if (messageEndRef.current && messages) {
@@ -45,6 +51,7 @@ const ChatContainer = () => {
 
   return (
     <div className="flex-1 flex flex-col overflow-auto">
+      
       <ChatHeader />
 
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -72,6 +79,11 @@ const ChatContainer = () => {
               </time>
             </div>
             <div className="chat-bubble flex flex-col">
+              {message.senderId === authUser._id && (
+  <p className="text-xs opacity-60 mt-1 text-right">
+    {message.seen ? "Seen ✓✓" : "Sent ✓"}
+  </p>
+)}
               {message.image && (
                 <img
                   src={message.image}
@@ -84,7 +96,13 @@ const ChatContainer = () => {
           </div>
         ))}
       </div>
-
+       
+          {isTyping && (
+      <div className="px-4 py-2 text-sm text-gray-500 italic">
+        {typingUser} is typing...
+      </div>
+    )}
+    
       <MessageInput />
     </div>
   );
