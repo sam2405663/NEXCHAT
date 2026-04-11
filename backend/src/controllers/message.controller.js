@@ -1,12 +1,13 @@
 import User from "../models/user.model.js";
 import Message from "../models/message.model.js";
-
 import cloudinary from "../lib/cloudinary.js";
 import { getReceiverSocketId, io } from "../lib/socket.js";
 
+// GET ALL USERS (Contacts List)
 export const getUsersForSidebar = async (req, res) => {
   try {
     const loggedInUserId = req.user._id;
+    // Find all users except the current one
     const filteredUsers = await User.find({ _id: { $ne: loggedInUserId } }).select("-password");
 
     res.status(200).json(filteredUsers);
@@ -16,6 +17,51 @@ export const getUsersForSidebar = async (req, res) => {
   }
 };
 
+// GET CONVERSATION HISTORY (The Chat List)
+export const getChatUsers = async (req, res) => {
+  try {
+    const myId = req.user._id;
+
+    // Use aggregation to find unique users you've messaged
+    const chattedUserIds = await Message.aggregate([
+      {
+        $match: {
+          $or: [{ senderId: myId }, { receiverId: myId }],
+        },
+      },
+      {
+        $sort: { createdAt: -1 }, // Get most recent first
+      },
+      {
+        $group: {
+          _id: null,
+          users: {
+            $addToSet: {
+              $cond: [
+                { $eq: ["$senderId", myId] },
+                "$receiverId",
+                "$senderId",
+              ],
+            },
+          },
+        },
+      },
+    ]);
+
+    const userIds = chattedUserIds.length > 0 ? chattedUserIds[0].users : [];
+
+    const users = await User.find({
+      _id: { $in: userIds },
+    }).select("-password");
+
+    res.status(200).json(users);
+  } catch (error) {
+    console.log("Error getting chat users:", error);
+    res.status(500).json({ message: "Server error" });
+  }
+};
+
+// GET MESSAGES BETWEEN TWO USERS
 export const getMessages = async (req, res) => {
   try {
     const { id: userToChatId } = req.params;
@@ -26,7 +72,7 @@ export const getMessages = async (req, res) => {
         { senderId: myId, receiverId: userToChatId },
         { senderId: userToChatId, receiverId: myId },
       ],
-    });
+    }).sort({ createdAt: 1 }); // Ensure chronological order
 
     res.status(200).json(messages);
   } catch (error) {
@@ -35,40 +81,7 @@ export const getMessages = async (req, res) => {
   }
 };
 
-export const markMessagesAsSeen = async (req, res) => {
-  console.log("🔥 MARK AS SEEN TRIGGERED");
-  try {
-    const { id: senderId } = req.params;
-    const receiverId = req.user._id;
-
-    await Message.updateMany(
-      {
-        senderId,
-        receiverId,
-        seen: false,
-      },
-      {
-        $set: { seen: true },
-      }
-    );
-
-    // 🔥 notify sender instantly
-    const senderSocketId = getReceiverSocketId(senderId);
-    console.log("🔥 EMITTING TO SOCKET:", senderSocketId);
-    if (senderSocketId) {
-      io.to(senderSocketId).emit("messagesSeenByReceiver", {
-        receiverId,
-      });
-    }
-
-    res.status(200).json({ message: "Messages marked as seen" });
-  } catch (error) {
-    console.log("Error in markMessagesAsSeen:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-
-};
-
+// SEND MESSAGE
 export const sendMessage = async (req, res) => {
   try {
     const { text, image } = req.body;
@@ -77,7 +90,6 @@ export const sendMessage = async (req, res) => {
 
     let imageUrl;
     if (image) {
-      // Upload base64 image to cloudinary
       const uploadResponse = await cloudinary.uploader.upload(image);
       imageUrl = uploadResponse.secure_url;
     }
@@ -91,6 +103,7 @@ export const sendMessage = async (req, res) => {
 
     await newMessage.save();
 
+    // Real-time notification
     const receiverSocketId = getReceiverSocketId(receiverId);
     if (receiverSocketId) {
       io.to(receiverSocketId).emit("newMessage", newMessage);
@@ -100,5 +113,28 @@ export const sendMessage = async (req, res) => {
   } catch (error) {
     console.log("Error in sendMessage controller: ", error.message);
     res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+// MARK AS SEEN
+export const markMessagesAsSeen = async (req, res) => {
+  try {
+    const { id: senderId } = req.params; // The person who sent the messages
+    const receiverId = req.user._id;    // Me (the one viewing them)
+
+    await Message.updateMany(
+      { senderId, receiverId, seen: false },
+      { $set: { seen: true } }
+    );
+
+    const senderSocketId = getReceiverSocketId(senderId);
+    if (senderSocketId) {
+      io.to(senderSocketId).emit("messagesSeenByReceiver", { receiverId });
+    }
+
+    res.status(200).json({ message: "Messages marked as seen" });
+  } catch (error) {
+    console.log("Error in markMessagesAsSeen:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };

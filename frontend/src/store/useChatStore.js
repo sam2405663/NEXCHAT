@@ -5,20 +5,35 @@ import { useAuthStore } from "./useAuthStore";
 
 export const useChatStore = create((set, get) => ({
   messages: [],
-  users: [],
+  chatUsers: [], // Users you have an existing conversation with
+  contacts: [],  // All potential users
   selectedUser: null,
   isUsersLoading: false,
   isMessagesLoading: false,
   isTyping: false,
   typingUser: null,
 
-  getUsers: async () => {
+  // Fetch all users for the "Contacts" tab
+  getContacts: async () => {
     set({ isUsersLoading: true });
     try {
       const res = await axiosInstance.get("/messages/users");
-      set({ users: res.data });
+      set({ contacts: res.data });
     } catch (error) {
-      toast.error(error.response.data.message);
+      toast.error("Failed to load contacts");
+    } finally {
+      set({ isUsersLoading: false });
+    }
+  },
+
+  // Fetch only users with message history for "Chats" tab
+  getChatUsers: async () => {
+    set({ isUsersLoading: true });
+    try {
+      const res = await axiosInstance.get("/messages/chats");
+      set({ chatUsers: res.data });
+    } catch (error) {
+      console.error("Error fetching chat history:", error);
     } finally {
       set({ isUsersLoading: false });
     }
@@ -30,9 +45,22 @@ export const useChatStore = create((set, get) => ({
       const res = await axiosInstance.get(`/messages/${userId}`);
       set({ messages: res.data });
     } catch (error) {
-      toast.error(error.response.data.message);
+      toast.error("Could not load messages");
     } finally {
       set({ isMessagesLoading: false });
+    }
+  },
+
+  sendMessage: async (messageData) => {
+    const { selectedUser, messages } = get();
+    try {
+      const res = await axiosInstance.post(`/messages/send/${selectedUser._id}`, messageData);
+      set({ messages: [...messages, res.data] });
+      
+      // Refresh chat list so the most recent conversation moves to top
+      get().getChatUsers(); 
+    } catch (error) {
+      toast.error(error.response?.data?.message || "Message failed to send");
     }
   },
 
@@ -40,77 +68,52 @@ export const useChatStore = create((set, get) => ({
     try {
       await axiosInstance.put(`/messages/seen/${senderId}`);
     } catch (error) {
-      console.log("Error marking messages as seen", error);
-    }
-  },
-  sendMessage: async (messageData) => {
-    const { selectedUser, messages } = get();
-    try {
-      const res = await axiosInstance.post(`/messages/send/${selectedUser._id}`, messageData);
-      set({ messages: [...messages, res.data] });
-    } catch (error) {
-      toast.error(error.response.data.message);
+      console.error("Error marking messages as seen", error);
     }
   },
 
-subscribeToMessages: () => {
-  const socket = useAuthStore.getState().socket;
+  subscribeToMessages: () => {
+    const socket = useAuthStore.getState().socket;
+    if (!socket) return;
 
-if (!socket) {
-  console.log("Socket not ready yet ❌");
-  return;
-}
+    // Clean up existing listeners to prevent memory leaks/duplicates
+    get().unsubscribeFromMessages();
 
-  // prevent duplicates
-  socket.off("newMessage");
-  socket.off("messagesSeenByReceiver");
-  socket.off("userTyping");
-  socket.off("userStoppedTyping");
+    socket.on("newMessage", (newMessage) => {
+      const { selectedUser, getChatUsers } = get();
+      
+      // Always refresh the chat list order when any new message arrives
+      getChatUsers();
 
-  socket.on("newMessage", (newMessage) => {
-    const selectedUser = get().selectedUser;
+      // Only add to message array if it's from the person we are currently talking to
+      if (selectedUser && newMessage.senderId === selectedUser._id) {
+        set({ messages: [...get().messages, newMessage] });
+      }
+    });
 
-    if (!selectedUser) return;
+    socket.on("messagesSeenByReceiver", () => {
+      const { selectedUser, messages } = get();
+      if (!selectedUser) return;
 
-    const isFromCurrentChat =
-      newMessage.senderId === selectedUser._id;
+      // Update local state: mark all messages sent by me to this user as 'seen'
+      const updatedMessages = messages.map((msg) =>
+        msg.receiverId === selectedUser._id ? { ...msg, seen: true } : msg
+      );
+      set({ messages: updatedMessages });
+    });
 
-    if (!isFromCurrentChat) return;
+    socket.on("userTyping", ({ senderName }) => {
+      set({ isTyping: true, typingUser: senderName });
+    });
 
-    set({ messages: [...get().messages, newMessage] });
-  });
-
-  // 🔥 IMPORTANT FIX (NO axios refetch)
-socket.on("messagesSeenByReceiver", async () => {
-  const selectedUser = get().selectedUser;
-  const authUser = useAuthStore.getState().authUser;
-
-  if (!selectedUser) return;
-
-  try {
-    const res = await axiosInstance.get(
-      `/messages/${selectedUser._id}`
-    );
-
-    // 🔥 IMPORTANT: replace array reference completely
-    set({ messages: [...res.data] });
-
-  } catch (error) {
-    console.log("seen refresh error", error);
-  }
-});
-
-  socket.on("userTyping", ({ senderName }) => {
-    set({ isTyping: true, typingUser: senderName });
-  });
-
-  socket.on("userStoppedTyping", () => {
-    set({ isTyping: false, typingUser: null });
-  });
-},
+    socket.on("userStoppedTyping", () => {
+      set({ isTyping: false, typingUser: null });
+    });
+  },
 
   unsubscribeFromMessages: () => {
     const socket = useAuthStore.getState().socket;
+    if (!socket) return;
     socket.off("newMessage");
     socket.off("messagesSeenByReceiver");
     socket.off("userTyping");
