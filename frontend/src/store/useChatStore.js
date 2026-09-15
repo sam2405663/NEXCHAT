@@ -26,6 +26,18 @@ export const useChatStore = create((set, get) => ({
     }
   },
 
+  // Search user by custom User ID or email
+  searchUserById: async (searchQuery) => {
+    try {
+      const res = await axiosInstance.get(`/messages/search/${encodeURIComponent(searchQuery)}`);
+      get().getContacts();
+      return res.data;
+    } catch (error) {
+      toast.error(error.response?.data?.message || "User ID not found");
+      return null;
+    }
+  },
+
   // Fetch only users with message history for "Chats" tab
   getChatUsers: async () => {
     set({ isUsersLoading: true });
@@ -53,13 +65,41 @@ export const useChatStore = create((set, get) => ({
 
   sendMessage: async (messageData) => {
     const { selectedUser, messages } = get();
+    const authUser = useAuthStore.getState().authUser;
+    if (!selectedUser) return;
+
+    // Create optimistic message object
+    const optimisticMessage = {
+      _id: "optimistic-" + Date.now(),
+      senderId: authUser?._id,
+      receiverId: selectedUser._id,
+      text: messageData.text || "",
+      image: messageData.image || null,
+      createdAt: new Date().toISOString(),
+      isOptimistic: true,
+      seen: false,
+    };
+
+    // Immediately display in UI
+    set({ messages: [...messages, optimisticMessage] });
+
     try {
       const res = await axiosInstance.post(`/messages/send/${selectedUser._id}`, messageData);
-      set({ messages: [...messages, res.data] });
       
-      // Refresh chat list so the most recent conversation moves to top
-      get().getChatUsers(); 
+      // Swap optimistic placeholder with confirmed backend message
+      set((state) => ({
+        messages: state.messages.map((msg) =>
+          msg._id === optimisticMessage._id ? res.data : msg
+        ),
+      }));
+
+      // Refresh chat list order
+      get().getChatUsers();
     } catch (error) {
+      // Remove optimistic message if server request failed
+      set((state) => ({
+        messages: state.messages.filter((msg) => msg._id !== optimisticMessage._id),
+      }));
       toast.error(error.response?.data?.message || "Message failed to send");
     }
   },
@@ -80,14 +120,19 @@ export const useChatStore = create((set, get) => ({
     get().unsubscribeFromMessages();
 
     socket.on("newMessage", (newMessage) => {
-      const { selectedUser, getChatUsers } = get();
+      const { selectedUser, getChatUsers, markMessagesAsSeen } = get();
       
       // Always refresh the chat list order when any new message arrives
       getChatUsers();
 
       // Only add to message array if it's from the person we are currently talking to
-      if (selectedUser && newMessage.senderId === selectedUser._id) {
+      if (selectedUser && (newMessage.senderId === selectedUser._id || newMessage.receiverId === selectedUser._id)) {
         set({ messages: [...get().messages, newMessage] });
+        
+        // Auto-mark as seen if message is sent by active chat partner
+        if (newMessage.senderId === selectedUser._id) {
+          markMessagesAsSeen(selectedUser._id);
+        }
       }
     });
 

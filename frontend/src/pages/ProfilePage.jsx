@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useAuthStore } from "../store/useAuthStore";
 import { Camera, Mail, User } from "lucide-react";
+import toast from "react-hot-toast";
 
 const ProfilePage = () => {
   const { authUser, isUpdatingProfile, updateProfile } = useAuthStore();
@@ -67,6 +68,31 @@ const ProfilePage = () => {
 
           <div className="space-y-6">
             <div className="space-y-1.5">
+              <div className="text-sm text-zinc-400 flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <User className="w-4 h-4" />
+                  Your Unique User ID (Share to receive chats)
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <p className="flex-1 px-4 py-2.5 bg-base-200 rounded-lg border font-mono text-primary font-semibold">
+                  {authUser?.customId || `@user_${authUser?._id?.slice(-6)}`}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const idToCopy = authUser?.customId || `@user_${authUser?._id?.slice(-6)}`;
+                    navigator.clipboard.writeText(idToCopy);
+                    toast.success("User ID copied!");
+                  }}
+                  className="btn btn-outline btn-primary btn-sm h-10 px-4"
+                >
+                  Copy
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
               <div className="text-sm text-zinc-400 flex items-center gap-2">
                 <User className="w-4 h-4" />
                 Full Name
@@ -88,7 +114,8 @@ const ProfilePage = () => {
             <div className="space-y-3 text-sm">
               <div className="flex items-center justify-between py-2 border-b border-zinc-700">
                 <span>Member Since</span>
-                    <span>{authUser?.createdAt ? authUser.createdAt.split("T")[0] : "Loading..."}</span>              </div>
+                <span>{authUser?.createdAt ? authUser.createdAt.split("T")[0] : "Active"}</span>
+              </div>
               <div className="flex items-center justify-between py-2">
                 <span>Account Status</span>
                 <span className="text-green-500">Active</span>

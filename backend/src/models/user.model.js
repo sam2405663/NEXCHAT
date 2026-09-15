@@ -20,6 +20,17 @@ const userSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    customId: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+    contacts: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
   },
   { timestamps: true }
 );

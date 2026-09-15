@@ -8,6 +8,7 @@ const MessageInput = () => {
   const [text, setText] = useState("");
   const [imagePreview, setImagePreview] = useState(null);
   const fileInputRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
   const { sendMessage, selectedUser } = useChatStore();
   const { authUser, socket } = useAuthStore();
 
@@ -28,28 +29,28 @@ const MessageInput = () => {
   const removeImage = () => {
     setImagePreview(null);
     if (fileInputRef.current) fileInputRef.current.value = "";
-
-  
   };
 
   const handleTyping = (e) => {
-  setText(e.target.value);
+    setText(e.target.value);
 
-  if (!selectedUser || !socket) return;
+    if (!selectedUser || !socket) return;
 
-  socket.emit("typing", {
-    receiverId: selectedUser._id,
-    senderName: authUser.fullName,
-  });
-
-  clearTimeout(window.typingTimeout);
-
-  window.typingTimeout = setTimeout(() => {
-    socket.emit("stopTyping", {
+    socket.emit("typing", {
       receiverId: selectedUser._id,
+      senderName: authUser.fullName,
     });
-  }, 1000);
-};
+
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+
+    typingTimeoutRef.current = setTimeout(() => {
+      socket.emit("stopTyping", {
+        receiverId: selectedUser._id,
+      });
+    }, 1000);
+  };
 
   const handleSendMessage = async (e) => {
     e.preventDefault();

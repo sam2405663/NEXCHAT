@@ -6,12 +6,14 @@ import {
   sendMessage,
   markMessagesAsSeen,
   getChatUsers,
+  searchUserById,
 } from "../controllers/message.controller.js";
 
 const router = express.Router();
 
 router.get("/users", protectRoute, getUsersForSidebar);
 router.get("/chats", protectRoute, getChatUsers);
+router.get("/search/:query", protectRoute, searchUserById);
 router.get("/:id", protectRoute, getMessages);
 router.put("/seen/:id", protectRoute, markMessagesAsSeen);
 
