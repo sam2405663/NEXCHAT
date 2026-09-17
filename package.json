@@ -2,11 +2,11 @@
   "name": "nexchat",
   "version": "1.0.0",
   "description": "NEXCHAT Fullstack Chat Application",
-  "main": "backend/src/index.js",
+  "main": "index.js",
   "scripts": {
     "build": "npm install --prefix backend && npm install --prefix frontend && npm run build --prefix frontend",
-    "postinstall": "npm install --prefix backend && npm install --prefix frontend",
-    "start": "node backend/src/index.js"
+    "postinstall": "npm install --prefix backend && npm install --prefix frontend && npm run build --prefix frontend",
+    "start": "node index.js"
   },
   "keywords": [],
   "author": "",
