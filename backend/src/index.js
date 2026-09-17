@@ -1,5 +1,7 @@
 import dotenv from "dotenv";
 import path from "path";
+import fs from "fs";
+import { fileURLToPath } from "url";
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
@@ -13,7 +15,8 @@ import messageRoutes from "./routes/message.route.js";
 import { app, server } from "./lib/socket.js";
 
 const PORT = process.env.PORT || 5001;
-const __dirname = path.resolve();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const allowedOrigins = [
   process.env.CLIENT_URL,
@@ -28,7 +31,7 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 app.use(cookieParser());
 app.use(
   cors({
-    origin: allowedOrigins,
+    origin: process.env.NODE_ENV === "production" ? (process.env.CLIENT_URL || true) : allowedOrigins,
     credentials: true,
   })
 );
@@ -39,18 +42,16 @@ app.use("/api/messages", messageRoutes);
 
 // Serve frontend in production
 if (process.env.NODE_ENV === "production") {
-  // Adjusted path: assuming 'frontend' and 'backend' are siblings in your root
-  const frontendDistPath = path.join(__dirname, "../frontend/dist");
+  const rootDistPath = path.resolve(process.cwd(), "frontend/dist");
+  const relativeDistPath = path.join(__dirname, "../../frontend/dist");
+  const frontendDistPath = fs.existsSync(rootDistPath) ? rootDistPath : relativeDistPath;
+
+  console.log(`Serving frontend static files from: ${frontendDistPath}`);
 
   // Serve static files
   app.use(express.static(frontendDistPath));
 
-  /**
-   * MODERN WILDCARD SYNTAX (v8+)
-   * The { } syntax defines a group, and /*any tells it to capture 
-   * everything including slashes into a parameter named 'any'.
-   */
-  app.get("{/*any}", (req, res) => {
+  app.use((req, res) => {
     res.sendFile(path.join(frontendDistPath, "index.html"));
   });
 }

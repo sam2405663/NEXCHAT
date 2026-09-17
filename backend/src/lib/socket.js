@@ -15,7 +15,7 @@ const allowedOrigins = [
 
 const io = new Server(server, {
   cors: {
-    origin: allowedOrigins,
+    origin: process.env.NODE_ENV === "production" ? (process.env.CLIENT_URL || true) : allowedOrigins,
     credentials: true,
   },
 });
